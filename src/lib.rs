@@ -10,6 +10,7 @@ use std::collections::{HashMap, VecDeque, HashSet};
 use std::cmp::Ordering;
 use std::rc::Rc;
 use rand::distributions::{IndependentSample, Range as RandomRange};
+use std::borrow::Borrow;
 
 const BUF_SIZE: usize = 8;
 
@@ -65,7 +66,7 @@ impl<R: Read> IntoIterator for FileTokenizer<R> {
     }
 }
 
-//pub type WordCount = HashMap<String, u64>;
+
 
 type RString = Rc<String>;
 
@@ -76,15 +77,44 @@ pub struct Trigrams {
     trigrams: HashMap<RString, HashMap<RString, HashSet<RString>>>,
 }
 
+
 impl Trigrams {
-    pub fn new(iter: Box<Iterator<Item = Token>>) -> Self {
-        let mut trigrams = Trigrams {
+    pub fn new() -> Self {
+        Trigrams {
             start_words: HashMap::new(),
             all_words: HashSet::new(),
             trigrams: HashMap::new(),
-        };
+        }
+    }
+    
+
+    pub fn print_trigrams(&self) {
+        for (w1,m) in &self.trigrams {
+            for (w2, s) in m {
+                for w3 in s {
+                    println!("{} {} {}", w1, w2, w3)
+                }
+            }
+        }
+    }
+
+    fn random_start_trigram(&self) -> (RString, RString, RString) {
+        let r = random_selection(self.start_words.len());
+        let w1 =  self.start_words.keys().nth(r).unwrap().clone();
+        let m = self.trigrams.get(&w1).unwrap();
+        let r = random_selection(m.len());
+        let w2 = m.keys().nth(r).unwrap().clone();
+        let s = m.get(&w2).unwrap();
+        let r = random_selection(s.len());
+        let w3 = s.iter().nth(r).unwrap().clone();
+        (w1, w2, w3)
+        
+    }
+
+    pub fn fill(&mut self, iter: Box<Iterator<Item = Token>>) {
         let mut current_words = VecDeque::new();
         let mut end_sentence = false;
+        let mut start_sentence = true;
 
         for token in iter {
             let s = match token {
@@ -93,20 +123,27 @@ impl Trigrams {
                 Token::EndOfSentence(mark) => {
                     end_sentence = true;
                     Some(mark.to_string())
+                },
+                Token::Interpuction(_) => {
+                    /* for now ignore iterpuctions in middle of sentence
+                    end_sentence = true;
+                    Some(",".to_string())
+                    */
+                    None
                 }
                 _ => None
 
             };
             // construct trigrams
             if let Some(s) = s {
-                let current = trigrams.all_words.get(&s)
+                let current = self.all_words.get(&s)
                     .map(|c| c.clone());
                 let w = match current {
                     Some(x) => x,
                     None => {
                         let n = Rc::new(s);
                         let w = n.clone();
-                        trigrams.all_words.insert(n);
+                        self.all_words.insert(n);
                         w
                     }
                 };
@@ -119,31 +156,86 @@ impl Trigrams {
                     let w2 = current_words[0].clone();
                     let w3 = current_words[1].clone();
 
-                    let curr= trigrams.start_words.entry(w1).or_insert(0);
-                    *curr+=1;
+                    if start_sentence {
+                        let curr= self.start_words.entry(w1).or_insert(0);
+                        *curr+=1;
+                        start_sentence=false
+                    }
 
-                    let map1 = trigrams.trigrams.entry(w1_copy).or_insert(HashMap::new());
+                    let map1 = self.trigrams.entry(w1_copy).or_insert(HashMap::new());
                     let map2 = map1.entry(w2).or_insert(HashSet::new());
                     map2.insert(w3);
 
                 }
 
                 if end_sentence {
-                    current_words.clear()
+                    current_words.clear();
+                    start_sentence=true;
+                    end_sentence=false;
                 }
 
             }
         }
-        trigrams
-    }
-/*
-    fn get_trigram(&self, template: (Option<&String>, Option<&String>, Option<&String>)) -> Option<(RString, RString, RString)> {
         
-        let w1 = match template.0 {
-            Some(s) => self.trigrams.get
-        }
     }
- */   
+
+
+    fn get_trigram(&self, w1: RString, w2: RString) -> Option<(RString, RString, RString)>{
+        
+        match self.trigrams.get(&w1) {
+            None => None,
+            Some(m) => {
+                match m.get(&w2) {
+                    None => None,
+                    Some(s) => {
+                        let r = random_selection(s.len());
+                        let w3 = s.iter().nth(r).unwrap().clone();
+                        Some((w1, w2, w3))
+                    }
+                }
+            }
+        }
+        
+    }
+
+    pub fn random_sentence(&self, max_len:usize) -> String{
+        assert!(max_len>=3);
+        let mut sentence = String::new();
+        let mut trigram = Some(self.random_start_trigram());
+        let mut count = 0;
+
+        fn output(sentence: &mut String, w: &RString, first:bool ) {
+            let s: &String = w.borrow();
+            match  &s[..] {
+                "."|"?"|"!"|","|";" => {
+                    sentence.push_str(s)
+                },
+                _ if first => {
+                    sentence.push_str(s)
+                }
+                _ => {
+                    sentence.push_str(" ");
+                    sentence.push_str(s);
+                }
+            }
+        }
+
+        while let Some((w1,w2,w3)) = trigram.take() {
+            if count == 0 {
+                output(&mut sentence, &w1, true );
+                output(&mut sentence, &w2, false );
+            }
+            output(&mut sentence, &w3, false );
+            count+=1;
+            if count> max_len - 3 {
+                break
+            }
+            trigram =  self.get_trigram(w2, w3) ;
+        }
+
+        sentence
+    }
+  
 }
 
 fn random_selection(len: usize) -> usize {
@@ -238,7 +330,7 @@ impl<R: Read> Iterator for FileTokenizerIterator<R> {
 
     }
 }
-
+// ########################## TESTS #############################################
 #[cfg(test)]
 mod tests {
 
@@ -343,16 +435,41 @@ mod tests {
 
     }
 
-    #[test]
-    fn trigrams() {
+    fn gen_trigrams() -> Trigrams {
         let text = "Say hello
         hello you must say,
         to all good men.
         Do'nt say hello to bad men!";
         let i = FileTokenizer::new_from_buffer(text.as_bytes()).into_iter();
-        let trigrams = Trigrams::new(Box::new(i));
+        let mut trigrams = Trigrams::new();
+        trigrams.fill(Box::new(i));
+        trigrams
+    }
+
+    #[test]
+    fn trigrams() {
+    let trigrams = gen_trigrams();
         println!("{:?}", trigrams);
-        assert_eq!(Some(&2), trigrams.start_words.get(&"hello".to_string()))
+        assert_eq!(2, trigrams.start_words.len());
+        trigrams.print_trigrams();
+    }
+
+    #[test]
+    fn random_start() {
+        let trigrams = gen_trigrams();
+        for _i in 0..10 {
+            let t = trigrams.random_start_trigram();
+            println!("{:?}", t);
+        }
+    }
+
+    #[test]
+    fn sentences() {
+        let trigrams = gen_trigrams();
+        for _i in 0..10 {
+            let s = trigrams.random_sentence(100);
+            println!("{}", s);
+        }
     }
 }
 
