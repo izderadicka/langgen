@@ -1,0 +1,99 @@
+<html>
+
+<head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <title>
+        Bilbo Babbitt Babbles
+    </title>
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/clipboard.js/1.6.1/clipboard.min.js"></script>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+    <style>
+        body {
+            padding: 1em;
+        }
+        .params input {
+            width: 10em;
+        }
+        </style>
+
+</head>
+
+<body>
+    <div class="container">
+        <div class="jumbotron">
+    <h1>Bilbo Babbitt Babbles</h1>
+    <h3>Bilbo Babbitt generates some funny sentences from languange corpus based on trigrams</h3>
+    <p>Learning project for RUST - apart of occational fun, some practical use can be for generating random text for designers. Our texts are much funnier
+        then "Lorem ipsum"</p>
+        </div>
+    <div class="params">
+        <form class="form-horizontal">
+        <div class="form-group">
+            <label class="col-sm-6 control-label" >Number of sentences</label>
+            <div class="col-sm-6">
+            <input type="text" name="number" id="input-number" value="10" class="form-control">
+            </div>
+
+        </div>
+        <div class="form-group">
+            <label class="col-sm-6 control-label" >Refresh every (s)</label>
+            <div class="col-sm-6">
+            <input type="text" name="refresh" id="input-refresh" value="60" class="form-control">
+            </div>
+        </div>
+        </form>
+    </div>
+    <div class="panel panel-default">
+        <div class="panel-heading"><h2>Here's Your Babble</h2></div>
+        <div id="panel-result" class="panel-body">
+        </div>
+    </div>
+    <div class="container" >
+        <button type="button" class="btn btn-primary btn-lg center-block" id="btn-copy" data-clipboard-target="#panel-result">Copy To Clipboard</button>
+    </div>
+    </div>
+    <script>
+        $(function () {
+
+            function loadText() {
+
+              var num = parseInt($('#input-number').val());
+
+            $.ajax("http://localhost:8088/sentences?number="+num,
+                { 
+                    type: 'GET',  
+                    error: function (xhr, status, error) {
+                        alert("Server Error " + status + " " + error);
+                    },
+                    success: function (text) {
+                        $('#panel-result').text(text);
+                    }
+                });
+            }
+
+            loadText();
+            new Clipboard('#btn-copy');
+
+            var reloadHandler;
+            
+            function doReload() {
+                var interval = parseInt($("#input-refresh").val());
+                if (reloadHandler) window.clearInterval(reloadHandler);
+                reloadHandler = window.setInterval(loadText, interval* 1000);
+            }
+
+            doReload();
+
+            $('#input-refresh').on('change', function(){
+                doReload();
+            });
+
+            $('#input-number').on('change', function(){
+                doReload();
+                loadText();
+            })
+
+        })
+    </script>
+</body>

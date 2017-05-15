@@ -13,7 +13,7 @@ use fnv::{FnvHashMap, FnvHashSet};
 
 const BUF_SIZE: usize = 8;
 
-pub mod server;
+pub mod http_handler;
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
