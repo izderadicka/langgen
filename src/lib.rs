@@ -1,27 +1,33 @@
 extern crate rand;
-
+extern crate fnv;
 
 use std::io;
 use std::io::prelude::*;
 use std::path::Path;
 use std::fs::File;
 use std::mem;
-use std::collections::{HashMap, VecDeque, HashSet};
+use std::collections::{HashMap, VecDeque};
 use std::cmp::Ordering;
-use std::rc::Rc;
 use rand::distributions::{IndependentSample, Range as RandomRange};
-use std::borrow::Borrow;
+use fnv::{FnvHashMap, FnvHashSet};
 
 const BUF_SIZE: usize = 8;
+
+pub mod server;
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
     Word(String),
-    StartOfSentence,
     EndOfSentence(char),
     Interpuction(char),
     Quote(char),
+    BracketLeft(char),
+    BracketRight(char)
+
 }
+
+type MyHashMap<K,V> = FnvHashMap<K,V>;
+type MyHashSet<V> = FnvHashSet<V>;
 
 pub struct FileTokenizer<R: Read> {
     file: R,
@@ -68,22 +74,22 @@ impl<R: Read> IntoIterator for FileTokenizer<R> {
 
 
 
-type RString = Rc<String>;
-
 #[derive(Debug)]
 pub struct Trigrams {
-    start_words: HashMap<RString, u64>,
-    all_words: HashSet<RString>,
-    trigrams: HashMap<RString, HashMap<RString, HashSet<RString>>>,
+    start_words: MyHashMap<u32, u32>,
+    all_words: MyHashMap<String, u32>,
+    rev_index: Vec<String>,
+    trigrams: MyHashMap<u32, MyHashMap<u32, MyHashSet<u32>>>,
 }
 
 
 impl Trigrams {
     pub fn new() -> Self {
         Trigrams {
-            start_words: HashMap::new(),
-            all_words: HashSet::new(),
-            trigrams: HashMap::new(),
+            start_words: MyHashMap::default(),
+            all_words: MyHashMap::default(),
+            rev_index: Vec::new(),
+            trigrams: MyHashMap::default(),
         }
     }
     
@@ -112,7 +118,7 @@ impl Trigrams {
 
     }
 
-    fn random_start_trigram(&self) -> (RString, RString, RString) {
+    fn random_start_trigram(&self) -> (u32, u32, u32) {
         let r = random_selection(self.start_words.len());
         let w1 =  self.start_words.keys().nth(r).unwrap().clone();
         let m = self.trigrams.get(&w1).unwrap();
@@ -150,15 +156,17 @@ impl Trigrams {
             };
             // construct trigrams
             if let Some(s) = s {
-                let current = self.all_words.get(&s)
-                    .map(|c| c.clone());
+                let current = self.all_words.get(&s).map(|x| *x);
                 let w = match current {
                     Some(x) => x,
                     None => {
-                        let n = Rc::new(s);
-                        let w = n.clone();
-                        self.all_words.insert(n);
-                        w
+                        let s2 = s.clone();
+                        let k = self.rev_index.len();
+                        assert!(k<= std::u32::MAX as usize);
+                        let k = k as u32;
+                        self.rev_index.push(s2);
+                        self.all_words.insert(s,k);
+                        k
                     }
                 };
 
@@ -176,8 +184,8 @@ impl Trigrams {
                         start_sentence=false
                     }
 
-                    let map1 = self.trigrams.entry(w1_copy).or_insert(HashMap::new());
-                    let map2 = map1.entry(w2).or_insert(HashSet::new());
+                    let map1 = self.trigrams.entry(w1_copy).or_insert(MyHashMap::default());
+                    let map2 = map1.entry(w2).or_insert(MyHashSet::default());
                     map2.insert(w3);
 
                 }
@@ -194,7 +202,7 @@ impl Trigrams {
     }
 
 
-    fn get_trigram(&self, w1: RString, w2: RString) -> Option<(RString, RString, RString)>{
+    fn get_trigram(&self, w1: u32, w2: u32) -> Option<(u32, u32, u32)>{
         
         match self.trigrams.get(&w1) {
             None => None,
@@ -218,8 +226,8 @@ impl Trigrams {
         let mut trigram = Some(self.random_start_trigram());
         let mut count = 0;
 
-        fn output(sentence: &mut String, w: &RString, first:bool ) {
-            let s: &String = w.borrow();
+        fn output(map: &Vec<String>, sentence: &mut String, w: u32, first:bool ) {
+            let s: &String = &map[w as usize];
             match  &s[..] {
                 "."|"?"|"!"|","|";" => {
                     sentence.push_str(s)
@@ -236,10 +244,10 @@ impl Trigrams {
 
         while let Some((w1,w2,w3)) = trigram.take() {
             if count == 0 {
-                output(&mut sentence, &w1, true );
-                output(&mut sentence, &w2, false );
+                output(&self.rev_index, &mut sentence, w1, true );
+                output(&self.rev_index,&mut sentence, w2, false );
             }
-            output(&mut sentence, &w3, false );
+            output(&self.rev_index,&mut sentence, w3, false );
             count+=1;
             if count> max_len - 3 {
                 break
@@ -283,7 +291,8 @@ impl<R: Read> FileTokenizerIterator<R> {
         if self.word.len() > 0 {
             let word = mem::replace(&mut self.word, vec![]);
             match String::from_utf8(word) {
-                Ok(s) => {
+                Ok(mut s) => {
+                    s.shrink_to_fit();
                     let word = s;
                     self.word.clear();
                     return Some(Token::Word(word));
@@ -323,10 +332,18 @@ impl<R: Read> Iterator for FileTokenizerIterator<R> {
                     match ch {
                         b'.' | b'!' | b'?' => {
                             self.token = Some(Token::EndOfSentence(char::from(ch)))
-                        }
+                        },
+                        b'('|b'['|b'{' => self.token = Some(Token::BracketLeft(char::from(ch))),
+                        b')'|b']'|b'}' => self.token = Some(Token::BracketRight(char::from(ch))),
                         b',' | b';' => self.token = Some(Token::Interpuction(char::from(ch))),
                         b'"' => self.token = Some(Token::Quote(char::from(ch))),
-                        b' ' | b'\n' | b'\t' => {}
+                        b'\'' if self.word.len() == 0 => self.token=Some(Token::Quote(char::from(ch))),
+                        b' ' | b'\n' | b'\t' => {
+                            if let  Some(&b'\'') = self.word.last() {
+                                let ch = self.word.pop().unwrap();
+                                self.token = Some(Token::Quote(char::from(ch)));
+                            }
+                        }
                         _ => {
                             self.word.push(ch);
                             continue;
@@ -428,6 +445,28 @@ mod tests {
     }
 
     #[test]
+    fn quotes() {
+        let text ="(neco), 's cim let's not talk' ";
+        let mut count_quote = 0;
+        let mut count_bracket =0;
+        let mut count_word = 0;
+
+        let t = FileTokenizer::new_from_buffer(text.as_bytes());
+        for token in t {
+            use Token::*;
+            println!("Token: {:?}", token);
+            match token {
+                Word(_) => count_word+=1,
+                BracketLeft(_)|BracketRight(_) => count_bracket+=1,
+                Quote(_) => count_quote+=1,
+                _ => ()
+            }
+        }
+
+        assert_eq!((2,2,6), (count_quote, count_bracket, count_word))
+    }
+
+    #[test]
     fn quote() {
         let text = "\"kulisak\"";
         let mut i = FileTokenizer::new_from_buffer(text.as_bytes()).into_iter();
@@ -448,6 +487,8 @@ mod tests {
         assert_eq!(v[0], ("hello".to_string(), 2));
 
     }
+
+    
 
     fn gen_trigrams() -> Trigrams {
         let text = "Say hello

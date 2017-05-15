@@ -8,5 +8,6 @@ authors = ["ivan"]
 docopt = "0.7.0"
 rustc-serialize = "0.3"
 rand = "0.3"
+fnv = "1.0.5"
 
 
