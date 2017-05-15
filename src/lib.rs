@@ -98,6 +98,20 @@ impl Trigrams {
         }
     }
 
+    pub fn print_stats(&self) {
+        let mut count = 0;
+        for (_,m) in &self.trigrams {
+            for (_, s) in m {
+                count+= s.len()
+            }
+        }
+
+        println!("Number of words: {}", self.all_words.len());
+        println!("Number of starting words: {}", self.start_words.len());
+        println!("Number of trigrams: {}", count);
+
+    }
+
     fn random_start_trigram(&self) -> (RString, RString, RString) {
         let r = random_selection(self.start_words.len());
         let w1 =  self.start_words.keys().nth(r).unwrap().clone();
