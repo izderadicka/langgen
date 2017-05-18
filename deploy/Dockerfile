@@ -1,20 +1,26 @@
 FROM scorpil/rust:nightly
 MAINTAINER ivan.zderadicka@gmail.com
 
-ENV http_proxy http://emea-proxy.uk.oracle.com:80
-ENV https_proxy http://emea-proxy.uk.oracle.com:80
+#ENV http_proxy http://emea-proxy.uk.oracle.com:80
+#ENV https_proxy http://emea-proxy.uk.oracle.com:80
 
 RUN apt-get update &&\
     apt-get install -y wget git
 
 RUN cd /opt &&\
     git clone --depth 1 https://github.com/izderadicka/langgen &&\
+    cd langgen &&\
     cargo build --release &&\
     cargo test --release &&\
     wget https://sherlock-holm.es/stories/plain-text/cano.txt
 
+EXPOSE 8080
+
+RUN groupadd -r rust && useradd -r -g rust rust
+USER rust
+
 WORKDIR /opt/langgen
-CMD cargo run --release --bin serve -- -a 0.0.0.0 -p 80 ./cano.txt
+CMD target/release/serve -a 0.0.0.0 -p 8080 ./cano.txt
 
 
 
