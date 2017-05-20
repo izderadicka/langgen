@@ -6,10 +6,10 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::fs::File;
 use std::mem;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, BTreeSet, VecDeque};
 use std::cmp::Ordering;
 use rand::distributions::{IndependentSample, Range as RandomRange};
-use fnv::{FnvHashMap, FnvHashSet};
+use fnv::{FnvHashMap};
 
 const BUF_SIZE: usize = 8;
 
@@ -27,7 +27,7 @@ pub enum Token {
 }
 
 type MyHashMap<K,V> = FnvHashMap<K,V>;
-type MyHashSet<V> = FnvHashSet<V>;
+type MyHashSet<V> = BTreeSet<V>;
 
 pub struct FileTokenizer<R: Read> {
     file: R,
