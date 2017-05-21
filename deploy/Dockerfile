@@ -1,9 +1,6 @@
 FROM scorpil/rust:nightly
 MAINTAINER ivan.zderadicka@gmail.com
 
-#ENV http_proxy http://emea-proxy.uk.oracle.com:80
-#ENV https_proxy http://emea-proxy.uk.oracle.com:80
-
 RUN apt-get update &&\
     apt-get install -y wget git
 
