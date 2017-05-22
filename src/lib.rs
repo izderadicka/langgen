@@ -34,15 +34,15 @@ pub struct FileTokenizer<R: Read> {
 }
 
 impl FileTokenizer<File> {
-    pub fn new_from_path(file_path: &Path) -> io::Result<Self> {
+    pub fn from_path(file_path: &Path) -> io::Result<Self> {
         let file = File::open(file_path)?;
         let tokenizer = FileTokenizer { file };
         Ok(tokenizer)
     }
 }
 
-impl<'a> FileTokenizer<&'a [u8]> {
-    pub fn new_from_buffer(buf: &'a [u8]) -> Self {
+impl<'a, R:Read> FileTokenizer<R> {
+    pub fn new(buf: R) -> Self {
         FileTokenizer { file: buf }
     }
 }
@@ -82,6 +82,13 @@ pub struct Trigrams {
     trigrams: MyHashMap<u32, MyHashMap<u32, MyHashSet<u32>>>,
 }
 
+#[derive(Debug)] 
+pub struct TrigramsStats {
+    pub start_words: u32,
+    pub all_words: u32,
+    pub trigrams: u64
+}
+
 
 impl Trigrams {
     pub fn new() -> Self {
@@ -104,17 +111,27 @@ impl Trigrams {
         }
     }
 
-    pub fn print_stats(&self) {
+    pub fn stats(&self) -> TrigramsStats {
         let mut count = 0;
         for (_,m) in &self.trigrams {
             for (_, s) in m {
                 count+= s.len()
             }
         }
+        TrigramsStats{
+            all_words: self.all_words.len() as u32,
+            start_words: self.start_words.len() as u32,
+            trigrams: count as u64
+        }
 
-        println!("Number of words: {}", self.all_words.len());
-        println!("Number of starting words: {}", self.start_words.len());
-        println!("Number of trigrams: {}", count);
+    }
+
+    pub fn print_stats(&self) {
+        let stats = self.stats();
+
+        println!("Number of words: {}", stats.all_words);
+        println!("Number of starting words: {}", stats.start_words);
+        println!("Number of trigrams: {}", stats.trigrams);
 
     }
 
@@ -131,7 +148,7 @@ impl Trigrams {
         
     }
 
-    pub fn fill(&mut self, iter: Box<Iterator<Item = Token>>) {
+    pub fn fill<R:Read>(&mut self, iter: FileTokenizerIterator<R>) {
         let mut current_words = VecDeque::new();
         let mut end_sentence = false;
         let mut start_sentence = true;
@@ -266,7 +283,7 @@ fn random_selection(len: usize) -> usize {
 
 }
 
-pub fn count_words(iter: Box<Iterator<Item = Token>>) -> Vec<(String, u64)> {
+pub fn count_words<R:Read>(iter: FileTokenizerIterator<R> )-> Vec<(String, u64)> {
     let mut map: HashMap<String, u64> = HashMap::new();
     let mut res: Vec<(String, u64)>;
     for token in iter {
@@ -374,7 +391,7 @@ mod tests {
 
         hey how";
 
-        let t = FileTokenizer::new_from_buffer(text.as_bytes());
+        let t = FileTokenizer::new(text.as_bytes());
         let mut i = t.into_iter();
         assert_eq!(i.next(), Some(Token::Word("usak".to_string())));
 
@@ -395,7 +412,7 @@ mod tests {
 
         ";
 
-        let t = FileTokenizer::new_from_buffer(text.as_bytes());
+        let t = FileTokenizer::new(text.as_bytes());
         let mut i = 0;
         for token in t {
             println!("{:?}", token);
@@ -407,7 +424,7 @@ mod tests {
     #[test]
     fn seps() {
         let text = "solich; kulich,usak \"kulisak\" stop.";
-        let t = FileTokenizer::new_from_buffer(text.as_bytes());
+        let t = FileTokenizer::new(text.as_bytes());
         #[derive(PartialEq,Eq, Debug)]
         struct Count {
             word: usize,
@@ -451,7 +468,7 @@ mod tests {
         let mut count_bracket =0;
         let mut count_word = 0;
 
-        let t = FileTokenizer::new_from_buffer(text.as_bytes());
+        let t = FileTokenizer::new(text.as_bytes());
         for token in t {
             use Token::*;
             println!("Token: {:?}", token);
@@ -469,7 +486,7 @@ mod tests {
     #[test]
     fn quote() {
         let text = "\"kulisak\"";
-        let mut i = FileTokenizer::new_from_buffer(text.as_bytes()).into_iter();
+        let mut i = FileTokenizer::new(text.as_bytes()).into_iter();
         assert_eq!(i.next(), Some(Token::Quote('\"')));
         assert_eq!(i.next(), Some(Token::Word("kulisak".to_string())));
         assert_eq!(i.next(), Some(Token::Quote('\"')));
@@ -480,8 +497,8 @@ mod tests {
         let text = "say hello
         hello you must say,
         to all good men";
-        let i = FileTokenizer::new_from_buffer(text.as_bytes()).into_iter();
-        let v = count_words(Box::new(i));
+        let i = FileTokenizer::new(text.as_bytes()).into_iter();
+        let v = count_words(i);
 
         assert_eq!(v[0], ("hello".to_string(), 2));
         assert_eq!(v[0], ("hello".to_string(), 2));
@@ -495,9 +512,9 @@ mod tests {
         hello you must say,
         to all good men.
         Do'nt say hello to bad men!";
-        let i = FileTokenizer::new_from_buffer(text.as_bytes()).into_iter();
+        let i = FileTokenizer::new(text.as_bytes()).into_iter();
         let mut trigrams = Trigrams::new();
-        trigrams.fill(Box::new(i));
+        trigrams.fill(i);
         trigrams
     }
 

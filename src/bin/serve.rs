@@ -4,20 +4,19 @@ extern crate rustc_serialize;
 extern crate docopt;
 extern crate zip;
 
-use langgen::http_handler::generate_sentence;
+use langgen::http_handler::serve;
+use langgen::{FileTokenizer};
 use docopt::Docopt;
-use hyper::server::{Server, Request, Response};
-use hyper::status::StatusCode;
-use hyper::method::Method;
-use self::hyper::mime::{self, Mime, TopLevel, SubLevel};
-use self::hyper::header;
-use std::io::{Write, stderr, copy};
+use std::io::{Write, stderr};
 use std::path::{Path};
+use zip::ZipArchive;
 use std::fs::File;
 
-const USAGE: &'static str = "
-Usage: serve [options] <file_or_zip>...
 
+const USAGE: &'static str = "
+Usage: serve [options] <file>...
+
+File parameters are either plain text files, or zipped text files
 Options:
     -p, --port=<x>  listen on this port [default = 8088]
     -a, --addr=<h>  listen on this local address [defalt = 127.0.0.1] 
@@ -32,51 +31,6 @@ struct Args {
     flag_port: Option<u16>,
     flag_addr: Option<String>,
     flag_index: Option<String>
-}
-
-fn serve(server: Server, trigrams: langgen::Trigrams, index_file:String) {
-
-let _l = server.handle(move |req:Request, mut res:Response| {
-    {
-        // Allow CORS
-        let headers= res.headers_mut();
-        headers.set(header::AccessControlAllowOrigin::Any);
-        headers.set(header::AccessControlAllowMethods(vec![Method::Get]))
-    }
-    match req.method {
-        Method::Get => {
-            if let &self::hyper::uri::RequestUri::AbsolutePath(ref path) =&req.uri {
-            if path.len()>=9 && path[..9]  == "/sentence"[..] {
-                generate_sentence(&req,res, &trigrams);
-            } else {
-                if let Ok(mut f) = File::open(&index_file) {
-                    let size = f.metadata().unwrap().len();
-                    {
-                    let headers= res.headers_mut();
-                    headers.set(header::ContentType(Mime(TopLevel::Text,
-                                             SubLevel::Html,
-                                             vec![(mime::Attr::Charset, mime::Value::Utf8)])));
-                    headers.set(header::ContentLength(size));
-                    }
-                    let mut res = res.start().unwrap();
-                    copy(&mut f,&mut res).unwrap();
-                    
-                } else {
-                *res.status_mut() = StatusCode::InternalServerError;
-                }
-            }
-            } else {
-                *res.status_mut() = StatusCode::BadRequest;
-            }
-        },
-        _ => {
-            *res.status_mut() = StatusCode::MethodNotAllowed;
-            let mut res = res.start().unwrap();
-            res.write_all(b"Invalid Request!").unwrap();
-        }
-    }
-    });
-
 }
 
 fn main() {
@@ -96,12 +50,28 @@ fn main() {
     }
     let mut trigrams = langgen::Trigrams::new();
     for fname in fnames {
-        let i=langgen::FileTokenizer::new_from_path(Path::new(&fname)).expect("Cannot open file").into_iter();
-        trigrams.fill(Box::new(i));
+        let p = Path::new(&fname);
+        match p.extension().and_then(|e| e.to_str()) {
+            Some("zip") => {
+                let f = File::open(p).unwrap();
+                let mut archive= ZipArchive::new(f).unwrap();
+                for i in 0..archive.len() {
+                    let zip_file = archive.by_index(i).unwrap();
+                    let i = FileTokenizer::new(zip_file).into_iter();
+                    trigrams.fill(i);
+
+                }
+            },
+            _ => {
+                let i=FileTokenizer::from_path(p).expect("Cannot open file").into_iter();
+                trigrams.fill(i);
+            }
+        }
+        
     }
+    assert!(trigrams.stats().start_words>0);
     let full_addr = format!("{}:{}", addr, port);
-    let server=Server::http(&full_addr).unwrap();
     println!("SERVING NOW ON {}", full_addr);
-    serve(server, trigrams, index_file);
+    serve(&full_addr, trigrams, index_file);
     
 }

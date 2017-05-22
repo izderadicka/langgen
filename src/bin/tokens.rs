@@ -4,7 +4,7 @@ use std::path::Path;
 
 fn main() {
     let fname = std::env::args().nth(1).expect("Missing arg");
-    let t=FileTokenizer::new_from_path(Path::new(&fname)).expect("Cannot Open");
+    let t=FileTokenizer::from_path(Path::new(&fname)).expect("Cannot Open");
     for token in t {
     println!("{:?}", token);
     }

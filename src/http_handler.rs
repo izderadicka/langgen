@@ -1,8 +1,11 @@
 extern crate hyper;
-use std::io::Write;
-use self::hyper::server::{Request, Response};
+use std::io::{Write, copy};
+use std::fs::File;
+use self::hyper::server::{Server, Request, Response};
 use self::hyper::header;
 use self::hyper::mime::{self, Mime, TopLevel, SubLevel};
+use self::hyper::method::Method;
+use self::hyper::status::StatusCode;
 use super::Trigrams;
 use self::hyper::Url;
 use std::str::FromStr;
@@ -44,6 +47,51 @@ pub fn generate_sentence(req: &Request, mut res: Response, trigrams: &Trigrams) 
     }
     let mut res = res.start().unwrap();
     res.write_all(&quote).unwrap();
+
+}
+
+pub fn serve(addr: &str, trigrams: Trigrams, index_file:String) {
+let server=Server::http(addr).unwrap();
+let _l = server.handle(move |req:Request, mut res:Response| {
+    {
+        // Allow CORS
+        let headers= res.headers_mut();
+        headers.set(header::AccessControlAllowOrigin::Any);
+        headers.set(header::AccessControlAllowMethods(vec![Method::Get]))
+    }
+    match req.method {
+        Method::Get => {
+            if let &self::hyper::uri::RequestUri::AbsolutePath(ref path) =&req.uri {
+            if path.len()>=9 && path[..9]  == "/sentence"[..] {
+                generate_sentence(&req,res, &trigrams);
+            } else {
+                if let Ok(mut f) = File::open(&index_file) {
+                    let size = f.metadata().unwrap().len();
+                    {
+                    let headers= res.headers_mut();
+                    headers.set(header::ContentType(Mime(TopLevel::Text,
+                                             SubLevel::Html,
+                                             vec![(mime::Attr::Charset, mime::Value::Utf8)])));
+                    headers.set(header::ContentLength(size));
+                    }
+                    let mut res = res.start().unwrap();
+                    copy(&mut f,&mut res).unwrap();
+                    
+                } else {
+                *res.status_mut() = StatusCode::InternalServerError;
+                }
+            }
+            } else {
+                *res.status_mut() = StatusCode::BadRequest;
+            }
+        },
+        _ => {
+            *res.status_mut() = StatusCode::MethodNotAllowed;
+            let mut res = res.start().unwrap();
+            res.write_all(b"Invalid Request!").unwrap();
+        }
+    }
+    });
 
 }
 

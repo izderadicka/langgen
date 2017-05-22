@@ -31,8 +31,8 @@ fn main() {
     let fnames = args.arg_file;
     let mut trigrams = langgen::Trigrams::new();
     for fname in fnames {
-        let i=langgen::FileTokenizer::new_from_path(Path::new(&fname)).expect("Cannot open file").into_iter();
-        trigrams.fill(Box::new(i));
+        let i=langgen::FileTokenizer::from_path(Path::new(&fname)).expect("Cannot open file").into_iter();
+        trigrams.fill(i);
     }
     if args.flag_stats {
         trigrams.print_stats();
