@@ -2,6 +2,7 @@ extern crate langgen;
 extern crate hyper;
 extern crate rustc_serialize;
 extern crate docopt;
+extern crate zip;
 
 use langgen::http_handler::generate_sentence;
 use docopt::Docopt;
@@ -15,7 +16,7 @@ use std::path::{Path};
 use std::fs::File;
 
 const USAGE: &'static str = "
-Usage: serve [options] <file>...
+Usage: serve [options] <file_or_zip>...
 
 Options:
     -p, --port=<x>  listen on this port [default = 8088]
@@ -33,31 +34,9 @@ struct Args {
     flag_index: Option<String>
 }
 
+fn serve(server: Server, trigrams: langgen::Trigrams, index_file:String) {
 
-fn main() {
-    let args: Args = Docopt::new(USAGE)
-                            .and_then(|d| d.decode())
-                            .unwrap_or_else(|e| e.exit());
-    
-    let port = args.flag_port.unwrap_or(8088);
-    let addr = args.flag_addr.unwrap_or("127.0.0.1".to_string());
-    let fnames = args.arg_file;
-    let default_index = "./web/index.html".to_string();
-    let index_file = args.flag_index.unwrap_or(default_index);
-    ;
-    if ! Path::new(&index_file).is_file() {
-        write!(stderr(), "Missing index file").unwrap();
-        std::process::exit(1);
-    }
-    let mut trigrams = langgen::Trigrams::new();
-    for fname in fnames {
-        let i=langgen::FileTokenizer::new_from_path(Path::new(&fname)).expect("Cannot open file").into_iter();
-        trigrams.fill(Box::new(i));
-    }
-    let full_addr = format!("{}:{}", addr, port);
-    let server=Server::http(&full_addr).unwrap();
-    println!("SERVING NOW ON {}", full_addr);
-    let _l = server.handle(move |req:Request, mut res:Response| {
+let _l = server.handle(move |req:Request, mut res:Response| {
     {
         // Allow CORS
         let headers= res.headers_mut();
@@ -97,4 +76,32 @@ fn main() {
         }
     }
     });
+
+}
+
+fn main() {
+    let args: Args = Docopt::new(USAGE)
+                            .and_then(|d| d.decode())
+                            .unwrap_or_else(|e| e.exit());
+    
+    let port = args.flag_port.unwrap_or(8088);
+    let addr = args.flag_addr.unwrap_or("127.0.0.1".to_string());
+    let fnames = args.arg_file;
+    let default_index = "./web/index.html".to_string();
+    let index_file = args.flag_index.unwrap_or(default_index);
+    ;
+    if ! Path::new(&index_file).is_file() {
+        write!(stderr(), "Missing index file").unwrap();
+        std::process::exit(1);
+    }
+    let mut trigrams = langgen::Trigrams::new();
+    for fname in fnames {
+        let i=langgen::FileTokenizer::new_from_path(Path::new(&fname)).expect("Cannot open file").into_iter();
+        trigrams.fill(Box::new(i));
+    }
+    let full_addr = format!("{}:{}", addr, port);
+    let server=Server::http(&full_addr).unwrap();
+    println!("SERVING NOW ON {}", full_addr);
+    serve(server, trigrams, index_file);
+    
 }
