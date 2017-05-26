@@ -250,7 +250,7 @@ impl Trigrams {
                     sentence.push_str(s)
                 },
                 _ if first => {
-                    sentence.push_str(s)
+                    sentence.push_str(&capitalize(s))
                 }
                 _ => {
                     sentence.push_str(" ");
@@ -275,6 +275,14 @@ impl Trigrams {
         sentence
     }
   
+}
+
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(l) => l.to_uppercase().chain(chars).collect()
+    }
 }
 
 fn random_selection(len: usize) -> usize {
