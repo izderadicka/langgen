@@ -281,7 +281,7 @@ fn capitalize(s: &str) -> String {
     let mut chars = s.chars();
     match chars.next() {
         None => String::new(),
-        Some(l) => l.to_uppercase().chain(chars).collect()
+        Some(l) => l.to_uppercase().to_string() + chars.as_str()
     }
 }
 
