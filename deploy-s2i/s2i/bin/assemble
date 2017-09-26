@@ -20,10 +20,15 @@ if [ "$(ls /tmp/artifacts/ 2>/dev/null)" ]; then
 fi
 
 echo "---> Installing application source..."
-cp -Rf /tmp/src/. ./
+cp -Rf /tmp/src .
+cd ./src
 
 echo "---> Building application from source..."
 # TODO: Add build steps for your application, eg npm install, bundle install, pip install, etc.
 cargo build --release &&\
 cargo test --release &&\
+cd ..
+cp src/target/release/serve .
+cp -Rf src/web .
+rm -rf src
 wget https://sherlock-holm.es/stories/plain-text/cano.txt

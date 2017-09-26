@@ -7,4 +7,4 @@
 #	https://github.com/openshift/source-to-image/blob/master/docs/builder_image.md
 #
 
-exec target/release/serve -a 0.0.0.0 -p 8080 ./cano.txt
+exec ./serve -a 0.0.0.0 -p 8080 ./cano.txt
